@@ -1,0 +1,7 @@
+{
+  "name": "dispersed-camp-map",
+  "version": "1.0.0",
+  "description": "Single-file map for finding dispersed camping, trails, water and land ownership in the US and Canada",
+  "scripts": { "build": "node scripts/build.js" },
+  "devDependencies": { "leaflet": "1.9.4" }
+}

@@ -1,0 +1,839 @@
+<title>Dispersed Camp Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/*LEAFLET_CSS*/
+/* Layout: full-bleed map, thin control bar on top, bottom sheet for details and nearest areas. */
+:root{
+  --bg:#f3f1ea; --panel:#fbfaf6; --fg:#23271f; --muted:#6b705f; --line:#d7d4c6;
+  --land:#e9e6d9; --water:#bcd3dc; --border:#9b9a86; --ca:#e3dfd0;
+  --blm:#c4781c; --wtr:#0284c7; --hik:#0f766e; --twr:#475569; --usfs:#3f7a3a; --crown:#b8402f; --state:#2f6d9a; --osm:#7a6f8f; --pin:#d6336c;
+  --accent:#2f5d3a; --accent-fg:#ffffff;
+  --sans:"Avenir Next","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --pad-l:max(16px,env(safe-area-inset-left,0px)); --pad-r:max(16px,env(safe-area-inset-right,0px));
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14180f; --panel:#1d2217; --fg:#e8e9dc; --muted:#98a08a; --line:#323a28;
+  --land:#242a1c; --water:#16262e; --border:#4a5240; --ca:#20261a;
+  --blm:#e0963b; --wtr:#38bdf8; --hik:#2dd4bf; --twr:#cbd5e1; --usfs:#6fb468; --crown:#e0705e; --state:#6aa8d6; --osm:#a99dc0; --pin:#ff6b9d;
+  --accent:#8fcf86; --accent-fg:#10150b; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#14180f; --panel:#1d2217; --fg:#e8e9dc; --muted:#98a08a; --line:#323a28;
+  --land:#242a1c; --water:#16262e; --border:#4a5240; --ca:#20261a;
+  --blm:#e0963b; --wtr:#38bdf8; --hik:#2dd4bf; --twr:#cbd5e1; --usfs:#6fb468; --crown:#e0705e; --state:#6aa8d6; --osm:#a99dc0; --pin:#ff6b9d;
+  --accent:#8fcf86; --accent-fg:#10150b; color-scheme:dark;}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden;-webkit-text-size-adjust:100%}
+*{box-sizing:border-box}
+#map{position:absolute;inset:0;background:var(--water);z-index:0}
+.leaflet-container{background:var(--water);font-family:var(--sans)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{position:absolute;z-index:500;left:0;right:0;top:env(safe-area-inset-top,0px);padding:10px var(--pad-r) 0 var(--pad-l);display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.top>*{pointer-events:auto}
+.bar{display:flex;gap:8px;align-items:center}
+.search{flex:1;min-width:0;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);padding:0 14px;box-shadow:0 1px 6px rgba(0,0,0,.15)}
+.ib{width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center;box-shadow:0 1px 6px rgba(0,0,0,.15)}
+.ib svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:16px;border:1px solid var(--line);background:var(--panel);font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.chip i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.chip[aria-pressed="false"]{opacity:.5}
+.chip[aria-pressed="false"] i{background:transparent;border:2px solid var(--c)}
+.fab{position:absolute;z-index:500;right:var(--pad-r);display:flex;flex-direction:column;gap:8px;bottom:calc(var(--sheet,76px) + 12px + env(safe-area-inset-bottom,0px));transition:bottom .2s}
+.status{position:absolute;z-index:500;left:var(--pad-l);bottom:calc(var(--sheet,76px) + 12px + env(safe-area-inset-bottom,0px));font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px;display:flex;gap:6px;align-items:center;max-width:55vw}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--usfs)}
+.sheet{position:absolute;z-index:600;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;box-shadow:0 -4px 18px rgba(0,0,0,.18);padding:8px var(--pad-r) calc(10px + env(safe-area-inset-bottom,0px)) var(--pad-l);max-height:38%;display:flex;flex-direction:column;transition:transform .2s}
+.sheet.min{}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 8px;flex:none}
+.sheet h2{margin:0;font-size:16px;font-weight:650;letter-spacing:.01em}
+.sheet .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.scroll{overflow-y:auto;min-height:0;margin-top:8px}
+.row{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left}
+.row i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.row b{font-weight:600;font-size:14px;display:block}
+.row small{color:var(--muted);font-size:12px}
+.row .d{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;margin:8px 0}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.btn{height:38px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:var(--bg);font-size:14px;text-decoration:none;color:var(--fg);display:inline-flex;align-items:center}
+.btn.p{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.warn{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.4}
+.drawer{position:absolute;z-index:700;top:0;bottom:0;right:0;width:min(380px,100%);background:var(--panel);border-left:1px solid var(--line);padding:calc(14px + env(safe-area-inset-top,0px)) var(--pad-r) calc(14px + env(safe-area-inset-bottom,0px)) 18px;overflow-y:auto;transform:translateX(100%);transition:transform .22s;visibility:hidden}
+.drawer.open{transform:none;visibility:visible}
+.drawer h1{font-size:19px;margin:0 0 4px}
+.drawer h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:20px 0 8px;font-weight:600}
+.drawer p{font-size:13px;line-height:1.5;margin:4px 0;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:13px}
+.field input,.field select{height:40px;border-radius:8px;border:1px solid var(--line);background:var(--bg);padding:0 10px}
+.seg{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{flex:1 1 auto;padding:0 10px;height:36px;border:0;background:var(--bg);font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.ovrow{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}.ovrow input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--accent)}.ovrow b{display:block;font-size:14px;font-weight:600}.ovrow small{display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:2px}
+.legend{position:absolute;z-index:550;right:calc(var(--pad-r) + 54px);bottom:calc(var(--sheet,76px) + 12px + env(safe-area-inset-bottom,0px));width:min(320px,calc(100vw - 96px));max-height:calc(100% - var(--sheet,76px) - 140px);overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 2px 14px rgba(0,0,0,.28)}
+.lg-h{display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.lg-m{font-size:13px;display:flex;gap:6px;align-items:center}
+.lg-g{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:12px 0 4px;font-weight:600;display:flex;align-items:center;gap:6px}
+.lg-g[style*="--gc"]::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gc)}
+.lg-i{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:7px 0}
+.lg-i i{width:18px;height:18px;border-radius:4px;flex:none;margin-top:1px;border:1px solid rgba(0,0,0,.45)}
+.lg-i b,.lg-x b{display:block;font-size:13px;font-weight:600}
+.lg-i small,.lg-x small{display:block;font-size:11.5px;color:var(--muted);line-height:1.35;margin-top:1px}
+.lg-i[aria-pressed="false"]{opacity:.4}
+.lg-x{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line);cursor:pointer}
+.lg-x input{width:18px;height:18px;margin-top:2px;flex:none;accent-color:var(--accent)}
+.gdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:8px;border:1px solid rgba(0,0,0,.4)}
+.ib.rec{background:#e11d48;color:#fff;border-color:#e11d48}.ib.rec svg circle{fill:currentColor}
+.mk.tw{border-radius:2px}.mk.hk{border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:15px;height:15px}.mk.wt{width:11px;height:11px}
+.stars{display:flex;gap:2px}.stars button{background:none;border:0;font-size:30px;line-height:1;padding:2px 3px;color:var(--line)}.stars button.on{color:#f59e0b}
+.ph{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.ph img{width:76px;height:76px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer}
+.phw{position:relative;display:inline-block}.phw button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--fg);color:var(--bg);font-size:14px;line-height:1;padding:0}
+#lb{position:absolute;inset:0;z-index:900;background:rgba(0,0,0,.92);display:grid;place-items:center;padding:16px}#lb img{max-width:100%;max-height:100%;border-radius:8px}
+.rg{display:flex;gap:6px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}.rg span{flex:1;min-width:0}.rg b{display:block;font-size:14px}.rg small{color:var(--muted);font-size:12px}.rg .btn{height:34px;padding:0 10px;font-size:13px}
+.sec{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 2px;font-weight:600}
+.toast{position:absolute;z-index:800;left:50%;transform:translateX(-50%);top:calc(110px + env(safe-area-inset-top,0px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:9px;font-size:13px;max-width:88vw;text-align:center}
+.mk{width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:var(--c);box-shadow:0 0 0 1px rgba(0,0,0,.45)}
+.mk.pin{border-radius:3px;transform:rotate(45deg)}
+.lbl{font-size:11px;font-weight:600;color:var(--fg);text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 3px var(--bg);white-space:nowrap}
+.leaflet-control-attribution{font-size:10px;background:color-mix(in srgb,var(--panel) 80%,transparent)!important;color:var(--muted)!important}
+.leaflet-control-attribution a{color:var(--muted)!important}
+.leaflet-top.leaflet-left{top:calc(118px + env(safe-area-inset-top,0px))}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--fg)!important;border-color:var(--line)!important}
+.leaflet-bottom.leaflet-right{margin-bottom:var(--sheet,76px)}
+@media (min-width:760px){
+  .sheet{left:var(--pad-l);right:auto;bottom:16px;width:380px;border-radius:14px;border:1px solid var(--line);max-height:58%}
+  .fab{bottom:16px} .legend{bottom:16px} .status{bottom:16px;left:calc(var(--pad-l) + 396px)}
+  .leaflet-bottom.leaflet-right{margin-bottom:0}
+}
+@media (prefers-reduced-motion:reduce){.sheet,.drawer,.fab{transition:none}}
+</style>
+
+<div id="map" role="application" aria-label="Dispersed camping map"></div>
+
+<div class="top">
+  <div class="bar">
+    <input id="q" class="search" type="search" placeholder="Search areas, states, provinces" autocomplete="off" aria-label="Search areas">
+    <button class="ib" id="btn-menu" aria-label="Menu and data"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  </div>
+  <div class="chips" id="chips"></div>
+</div>
+
+<div class="status"><span class="dot" id="dot"></span><span id="stat">Offline map</span></div>
+
+<div class="fab">
+  <button class="ib" id="btn-loc" aria-label="Show my location"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+  <button class="ib" id="btn-rec" aria-label="Record a track" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg></button>
+  <button class="ib" id="btn-legend" aria-label="Land legend and layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></button>
+  <button class="ib" id="btn-pin" aria-label="Drop a pin at map center"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.800 12 21 12 21z"/><path d="M12 7v5M9.500 9.500h5"/></svg></button>
+</div>
+
+<div class="legend" id="legend" hidden></div>
+<section class="sheet" id="sheet" aria-live="polite"></section>
+
+<aside class="drawer" id="drawer" aria-label="Menu">
+  <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+    <div><h1>Dispersed Camp Map</h1><p id="counts"></p></div>
+    <button class="ib" id="btn-close" aria-label="Close menu"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+
+  <h3>Public land layer</h3>
+  <p>Color-coded by who manages the land. Use the layers button on the map for the legend, to hide land types, and to add wildfire perimeters. Tap the map to see who manages a spot.</p>
+  <div class="field"><label for="landop">Layer strength</label><input id="landop" type="range" min="20" max="100" value="85" style="padding:0;accent-color:var(--accent)"></div>
+  <p>Dispersed camping is a general rule, not a permit. Check the local ranger district or field office for fire bans, seasonal closures, and posted limits. Private land is never shown as open.</p>
+
+  <h3>Map</h3>
+  <div class="seg" id="base" role="group" aria-label="Base map">
+    <button data-v="off" aria-pressed="false">Offline</button>
+    <button data-v="topo" aria-pressed="true">Topo</button>
+    <button data-v="osm" aria-pressed="false">Streets</button>
+    <button data-v="usgs" aria-pressed="false">USGS</button>
+    <button data-v="sat" aria-pressed="false">Satellite</button>
+  </div>
+  <p>Detail loads from the internet and zooms in to street and trail level. Areas you view with Topo, Streets, or USGS are kept on this device and show again offline.</p>
+  <div class="seg" id="units" role="group" aria-label="Units" style="margin-top:10px">
+    <button data-v="mi" aria-pressed="true">Miles</button>
+    <button data-v="km" aria-pressed="false">Kilometers</button>
+  </div>
+
+  <h3>Trails and hikes</h3>
+  <p>Zoom in to see trail maps: marked hiking routes and Forest Service trails. Tap Update this view to load named hiking routes as map points, then tap one for details and to draw its route. Tap the map to see the trail name and length under your finger.</p>
+  <p>AllTrails data is not used. It has no public data feed and its terms block copying. Each hike has a search link so you can check AllTrails yourself.</p>
+  <h3>Offline regions</h3>
+  <p>Save the map you are looking at so it works with no signal. Zoom in on a forest or county first. OpenStreetMap and OpenTopoMap do not allow bulk saving, so regions use USGS topo (US only) plus the land layers.</p>
+  <div class="field"><label for="rg-name">Name</label><input id="rg-name" placeholder="Fishlake National Forest"></div>
+  <label class="lg-x" style="border:0"><input type="checkbox" id="rg-usgs" checked><span><b>USGS topo base</b></span></label>
+  <label class="lg-x" style="border:0"><input type="checkbox" id="rg-land" checked><span><b>US public land layer</b></span></label>
+  <label class="lg-x" style="border:0"><input type="checkbox" id="rg-ca" checked><span><b>Canada land layers that are on</b></span></label>
+  <div class="btns"><button class="btn p" id="rg-save">Save this view</button><button class="btn" id="rg-stop" hidden>Stop</button></div>
+  <p id="rg-est"></p><div id="rg-list"></div>
+
+  <h3>Tracks</h3>
+  <p>Record your route in and out of a site with GPS. Keep the screen on and this page open, because phones pause location when the screen locks.</p>
+  <div class="btns"><button class="btn p" id="tr-rec">Start recording</button></div>
+  <div id="tr-list"></div>
+
+  <h3>Cell coverage</h3>
+  <p>No free coverage map is available to this page. Turn on the Cell towers chip to see towers mapped in OpenStreetMap, which is incomplete. Rate signal on your own pins, and check your carrier's map before you go.</p>
+  <div class="btns"><a class="btn" target="_blank" rel="noopener" href="https://broadbandmap.fcc.gov/home">FCC coverage map</a></div>
+
+  <h3>Update camping data</h3>
+  <p>Load free and basic campsites, named hiking routes, water points, and cell towers from OpenStreetMap for the part of the map on screen. They are saved here and work offline afterward.</p>
+  <div class="seg" id="auto" role="group" aria-label="Auto load" style="margin:8px 0"><button data-v="off" aria-pressed="true">Manual</button><button data-v="on" aria-pressed="false">Auto-load as I pan</button></div>
+  <div class="btns"><button class="btn p" id="btn-refresh">Update this view</button><button class="btn" id="btn-clear">Clear saved</button></div>
+  <p id="refresh-note"></p>
+
+  <h3>My pins</h3>
+  <div class="btns"><button class="btn" id="btn-export">Export GeoJSON</button><button class="btn" id="btn-gpx">Export GPX</button><label class="btn" for="imp" style="cursor:pointer">Import file</label><input id="imp" type="file" accept=".gpx,.geojson,.json,.csv" hidden></div>
+  <p>Import GPX, GeoJSON, or CSV (name, lat, lon, notes) from other apps. Imported points become your pins.</p>
+
+  <h3>About the data</h3>
+  <p>Land ownership: BLM Surface Management Agency map (BLM, Forest Service, Park Service, Fish and Wildlife, Reclamation, BIA, military, state, local). Fires: National Interagency Fire Center. Forest roads: Forest Service motor vehicle use maps. US layers cover the United States only. Canada: Ontario Crown land (Ontario LIO), BC Crown land ownership and recreation sites (BC government), and parks and protected areas (Environment and Climate Change Canada). Other provinces are not included yet. Hikes, water points, and cell towers: OpenStreetMap. Hiking route tiles: Waymarked Trails. Forest Service trails: US Forest Service.</p>
+  <p>The built-in list holds 120 regional anchors, not exact campsites. Rules and closures change often.</p>
+  <p>Base maps: OpenTopoMap, OpenStreetMap contributors, USGS The National Map, Esri imagery. Natural Earth for the offline fallback.</p>
+</aside>
+<div id="lb" hidden><img alt="Pin photo"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>/*LEAFLET_JS*/</script>
+<script>
+const BASE=/*BASE*/;
+const AREAS=/*AREAS*/;
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const TYPES={BLM:{n:"BLM",c:"--blm"},USFS:{n:"Forest Service",c:"--usfs"},Crown:{n:"Canada Crown",c:"--crown"},"WA DNR":{n:"State land",c:"--state"},OSM:{n:"OSM sites",c:"--osm"},HIKE:{n:"Hikes",c:"--hik"},WATER:{n:"Water",c:"--wtr"},TOWER:{n:"Cell towers",c:"--twr"},PIN:{n:"My pins",c:"--pin"}};
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- storage (IndexedDB with memory fallback) ---------- */
+const mem={};let dbp=null;
+function db(){if(dbp)return dbp;dbp=new Promise(res=>{try{const r=indexedDB.open("dispersed-camp-map",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}});return dbp}
+async function kvGet(k){const d=await db();if(!d)return mem[k];return new Promise(res=>{try{const q=d.transaction("kv").objectStore("kv").get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined)}catch(e){res(mem[k])}})}
+async function kvSet(k,v){mem[k]=v;const d=await db();if(!d)return;return new Promise(res=>{try{const t=d.transaction("kv","readwrite");t.objectStore("kv").put(v,k);t.oncomplete=()=>res();t.onerror=()=>res()}catch(e){res()}})}
+async function kvDel(k){delete mem[k];const d=await db();if(!d)return;try{d.transaction("kv","readwrite").objectStore("kv").delete(k)}catch(e){}}
+
+/* ---------- state ---------- */
+const S={auto:false,units:"mi",base:"off",on:{BLM:1,USFS:1,Crown:1,"WA DNR":1,OSM:1,HIKE:1,WATER:1,TOWER:0,PIN:1},pins:[],osm:[],water:[],tower:[],hikes:[],tracks:[],regions:[],osmAt:null,q:"",me:null,sel:null};
+let toastT;
+function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3200)}
+
+/* ---------- map ---------- */
+const map=L.map("map",{zoomControl:true,minZoom:2,maxZoom:18,preferCanvas:true,worldCopyJump:false,zoomSnap:.5,attributionControl:true}).setView([45,-105],3.5);
+map.attributionControl.setPrefix(false);
+map.attributionControl.addAttribution("Natural Earth");
+map.createPane("basevec").style.zIndex=150;map.createPane("lands").style.zIndex=250;map.createPane("fires").style.zIndex=300;
+const cv=L.canvas({padding:.3,pane:"basevec"});
+
+function ringsToLatLng(p){return p.map(poly=>poly.map(r=>r.map(c=>[c[1],c[0]])))}
+const stateLayer=L.layerGroup().addTo(map),lakeLayer=L.layerGroup().addTo(map),cityLayer=L.layerGroup().addTo(map);
+let stateShapes=[],lakeShapes=[];
+BASE.states.forEach(s=>{stateShapes.push({ca:s.c==="CA",l:L.polygon(ringsToLatLng(s.p),{renderer:cv,pane:"basevec",weight:.8,fillOpacity:1,interactive:false}).addTo(stateLayer)})});
+BASE.lakes.forEach(k=>{lakeShapes.push(L.polygon(ringsToLatLng(k.p),{renderer:cv,pane:"basevec",weight:0,fillOpacity:1,interactive:false}).addTo(lakeLayer))});
+function styleBase(){
+  const land=cssv("--land"),ca=cssv("--ca"),b=cssv("--border"),w=cssv("--water");
+  stateShapes.forEach(s=>s.l.setStyle({fillColor:s.ca?ca:land,color:b}));
+  lakeShapes.forEach(l=>l.setStyle({fillColor:w}));
+}
+function labelCities(){
+  cityLayer.clearLayers();const z=map.getZoom();const min=z<4?3e6:z<5?1.2e6:z<6?5e5:z<7?2.5e5:1.5e5;
+  const b=map.getBounds().pad(.1);
+  BASE.cities.forEach(c=>{if(c[3]>=min&&b.contains([c[2],c[1]]))L.marker([c[2],c[1]],{icon:L.divIcon({className:"",html:'<span class="lbl">'+esc(c[0])+"</span>",iconSize:[0,0],iconAnchor:[-4,6]}),interactive:false,keyboard:false}).addTo(cityLayer)});
+}
+map.on("moveend",labelCities);
+
+/* ---------- optional online tile layer with passive on-device cache ---------- */
+const TILES={
+  topo:{u:"https://tile.opentopomap.org/{z}/{x}/{y}.png",a:"© OpenTopoMap, OpenStreetMap contributors",z:17,cache:1},
+  osm:{u:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",a:"© OpenStreetMap contributors",z:19,cache:1},
+  usgs:{u:"https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",a:"USGS The National Map",z:16,cache:1},
+  sat:{u:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",a:"Imagery © Esri, Maxar, Earthstar Geographics",z:18,cache:0}
+};
+const CachedTiles=L.TileLayer.extend({
+  createTile(coords,done){
+    const img=document.createElement("img");img.alt="";img.setAttribute("role","presentation");
+    const key=this.options.key+"/"+coords.z+"/"+coords.x+"/"+coords.y;
+    const url=this.getTileUrl(coords);
+    kvGet("t:"+key).then(blob=>{
+      if(blob){const o=URL.createObjectURL(blob);img.onload=()=>{URL.revokeObjectURL(o);done(null,img)};img.src=o;return}
+      if(!navigator.onLine){done(null,img);return}
+      if(this.options.nocache){img.onload=()=>done(null,img);img.onerror=()=>done(new Error("tile"),img);img.src=url;return}
+      fetch(url,{mode:"cors"}).then(r=>r.ok?r.blob():Promise.reject()).then(b=>{kvSet("t:"+key,b);const o=URL.createObjectURL(b);img.onload=()=>{URL.revokeObjectURL(o);done(null,img)};img.src=o}).catch(()=>{img.onload=()=>done(null,img);img.onerror=()=>done(new Error("tile"),img);img.src=url});
+    });
+    return img;
+  }
+});
+let tileLayer=null;
+function setBase(v){
+  S.base=v;if(tileLayer){map.removeLayer(tileLayer);tileLayer=null}
+  if(v!=="off"){const t=TILES[v];tileLayer=new CachedTiles(t.u,{key:v,maxZoom:t.z,maxNativeZoom:t.z,attribution:t.a,crossOrigin:true,nocache:!t.cache}).addTo(map)}
+  document.querySelectorAll("#base button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===v)));
+  kvSet("base",v);
+}
+
+/* ---------- public land overlay, color-coded by manager ---------- */
+const LAND_SVC="https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_without_PriUnk/MapServer";
+const ALL_CACHE=LAND_SVC+"/tile/{z}/{y}/{x}";
+const MVUM="https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_MVUM_02/MapServer";
+const FIRES="https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query";
+const GROUPS={ok:"Usually allowed",var:"Rules vary",no:"Not allowed"};
+const GCOL={ok:"#16a34a",var:"#2563eb",no:"#dc2626"};
+const LAND=[
+ {k:"blm",ids:[21],n:"BLM land",g:"ok",c:[245,158,11],d:"Bureau of Land Management. Commonly 14 days."},
+ {k:"usfs",ids:[23],n:"National Forest",g:"ok",c:[22,163,74],d:"Usually allowed outside posted areas."},
+ {k:"state",ids:[28],n:"State land",g:"var",c:[37,99,235],d:"Varies by state. Many need a permit."},
+ {k:"bor",ids:[25],n:"Reclamation",g:"var",c:[13,148,136],d:"Often limited to designated sites."},
+ {k:"local",ids:[29],n:"Local government",g:"var",c:[100,116,139],d:"Check city or county rules."},
+ {k:"nps",ids:[22],n:"National Park Service",g:"no",c:[147,51,234],d:"Camp only at permitted sites."},
+ {k:"fws",ids:[24],n:"Wildlife refuge",g:"no",c:[219,39,119],d:"Generally closed to camping."},
+ {k:"dod",ids:[20],n:"Military",g:"no",c:[220,38,38],d:"Closed to the public."},
+ {k:"bia",ids:[26],n:"Tribal (BIA)",g:"no",c:[146,97,53],d:"Closed without tribal permission."},
+ {k:"oth",ids:[27,18,19],n:"Other federal and Alaska Native",g:"no",c:[110,110,110],d:"Assume closed unless posted open."}
+];
+S.land={};LAND.forEach(t=>S.land[t.k]=1);S.landOn=true;S.landOp=.85;S.fires=false;S.mvum=false;
+const ExportTiles=CachedTiles.extend({
+  getTileUrl(c){const R=20037508.342789244,res=2*R/256/Math.pow(2,c.z),x0=-R+c.x*256*res,y1=R-c.y*256*res;
+    return this.options.svc+"/export?bbox="+[x0,y1-256*res,x0+256*res,y1].join(",")+"&bboxSR=3857&imageSR=3857&size=256,256&dpi=96&format=png32&transparent=true"+(this.options.dyn?"&dynamicLayers="+encodeURIComponent(this.options.dyn):(this.options.layers?"&layers="+this.options.layers:""))+"&f=image"}
+});
+function dynLayers(){
+  const arr=[];
+  LAND.forEach(t=>{if(!S.land[t.k])return;t.ids.forEach(id=>arr.push({id,source:{type:"mapLayer",mapLayerId:id},drawingInfo:{renderer:{type:"simple",symbol:{type:"esriSFS",style:"esriSFSSolid",color:t.c.concat(150),outline:{type:"esriSLS",style:"esriSLSSolid",color:t.c.map(v=>Math.round(v*.5)).concat(255),width:1}}}}}))});
+  return arr;
+}
+let landLayer=null,landFallback=false,landErr=0,mvumLayer=null;
+function buildLand(){
+  if(landLayer){map.removeLayer(landLayer);landLayer=null}
+  if(!S.landOn)return;
+  const dl=dynLayers();if(!dl.length)return;
+  const sig=LAND.filter(t=>S.land[t.k]).map(t=>t.k).join("-");
+  landLayer=landFallback
+    ?new CachedTiles(ALL_CACHE,{key:"land-fallback",pane:"lands",opacity:S.landOp,maxZoom:18,maxNativeZoom:15,minZoom:2,attribution:"BLM SMA",crossOrigin:true})
+    :new ExportTiles("",{key:"land-"+sig,svc:LAND_SVC,dyn:JSON.stringify(dl),pane:"lands",opacity:S.landOp,maxZoom:18,minZoom:2,attribution:"BLM, USFS, NPS, USFWS, BOR, BIA, DOD",crossOrigin:true});
+  landLayer.on("tileload",()=>{landErr=0});
+  landLayer.on("tileerror",()=>{
+    if(!navigator.onLine)return;
+    if(!landFallback&&++landErr>=4){landFallback=true;toast("Switched to the standard land map. Colors follow the agency map instead of the legend.");buildLand()}
+    else if(landFallback&&++landErr===6)toast("Land data is slow or unavailable right now.");
+  });
+  map.addLayer(landLayer);
+}
+function setMvum(){
+  if(mvumLayer){map.removeLayer(mvumLayer);mvumLayer=null}
+  if(!S.mvum)return;
+  mvumLayer=new ExportTiles("",{key:"ov-mvum",svc:MVUM,layers:"show:1",pane:"lands",opacity:.95,maxZoom:18,minZoom:9,attribution:"USFS MVUM",crossOrigin:true}).addTo(map);
+}
+let fireLayer=null;
+async function loadFires(){
+  let data=null,at=Date.now();
+  if(navigator.onLine){try{const r=await fetch(FIRES+"?where=1%3D1&outFields=poly_IncidentName,poly_GISAcres,attr_IncidentTypeCategory&outSR=4326&f=geojson&maxAllowableOffset=0.002&geometryPrecision=4&resultRecordCount=2000");if(r.ok){const j=await r.json();if(j&&j.features){data=j;await kvSet("fires",{at,data})}}}catch(e){}}
+  if(!data){const c=await kvGet("fires");if(c){data=c.data;at=c.at}}
+  if(!data){toast("Could not load wildfire perimeters");return}
+  drawFires(data,at);
+}
+function drawFires(data,at){
+  if(fireLayer){map.removeLayer(fireLayer);fireLayer=null}
+  if(!S.fires)return;
+  fireLayer=L.geoJSON(data,{pane:"fires",bubblingMouseEvents:false,style:()=>({color:"#7f1d1d",weight:2,fillColor:"#ef4444",fillOpacity:.5}),onEachFeature:(f,l)=>l.on("click",()=>showFire(f,at))}).addTo(map);
+}
+function showFire(f,at){
+  const p=f.properties||{};S.sel={fire:1};
+  sheet.innerHTML='<div class="grab"></div><h2>'+esc(p.poly_IncidentName||"Fire perimeter")+'</h2><div class="sub">'+(p.attr_IncidentTypeCategory==="RX"?"Prescribed fire":"Wildfire")+(p.poly_GISAcres?" · "+Math.round(p.poly_GISAcres).toLocaleString()+" acres":"")+' · data from '+new Date(at).toLocaleDateString()+'</div><div class="scroll"><p class="warn">Stay out of active fire areas and expect closures around them. Check current orders before you go.</p><div class="btns"><a class="btn p" target="_blank" rel="noopener" href="https://inciweb.wildfire.gov/">InciWeb</a><button class="btn" id="f-back">Back to list</button></div></div>';
+  $("#f-back").onclick=renderNearby;requestAnimationFrame(sheetH);
+}
+function applyOverlays(){buildLand();buildCA();setWm();setMvum();if(S.fires)loadFires();else drawFires(null)}
+function landChanged(){kvSet("land",S.land);kvSet("landOn",S.landOn?1:0);syncLegend();buildLand()}
+function syncLegend(){
+  document.querySelectorAll(".lg-i").forEach(b=>b.setAttribute("aria-pressed",String(!!S.land[b.dataset.k])));
+  const m=$("#lg-master");if(m)m.checked=S.landOn;
+  const f=$("#lg-fires");if(f)f.checked=S.fires;const v=$("#lg-mvum");if(v)v.checked=S.mvum;const wmc=$("#lg-wm");if(wmc)wmc.checked=S.wm;document.querySelectorAll("[data-ca]").forEach(i=>{i.checked=!!S.ca[i.dataset.ca]});
+  const c=$("#chip-allowed");if(c)c.setAttribute("aria-pressed",String(S.landOn));
+  const o=$("#landop");if(o)o.value=Math.round(S.landOp*100);
+}
+function buildLegend(){
+  const el=$("#legend");
+  let h='<div class="lg-h"><b>Public land</b><label class="lg-m"><input type="checkbox" id="lg-master"> Show</label></div>';
+  Object.keys(GROUPS).forEach(g=>{h+='<div class="lg-g" style="--gc:'+GCOL[g]+'">'+GROUPS[g]+"</div>";LAND.filter(t=>t.g===g).forEach(t=>{h+='<button class="lg-i" data-k="'+t.k+'" aria-pressed="true"><i style="background:rgb('+t.c.join(",")+')"></i><span><b>'+t.n+"</b><small>"+t.d+"</small></span></button>"})});
+  h+='<div class="lg-g">Trails, show when zoomed in</div><label class="lg-x"><input type="checkbox" id="lg-wm"><span><b>Hiking routes</b><small>Marked routes from OpenStreetMap volunteers.</small></span></label>';CA.filter(c=>c.g==="trail").forEach(c=>{h+='<label class="lg-x"><input type="checkbox" data-ca="'+c.k+'"><span><b>'+c.label+'</b><small>'+c.note+'</small></span></label>'});h+='<div class="lg-g">Canada</div>';CA.filter(c=>!c.g).forEach(c=>{h+='<label class="lg-x"><input type="checkbox" data-ca="'+c.k+'"><span><b>'+c.label+'</b><small>'+c.note+'</small></span></label>'});h+='<div class="lg-g">More layers</div><label class="lg-x"><input type="checkbox" id="lg-fires"><span><b>Wildfire perimeters</b><small>Current fires. The last load is kept offline.</small></span></label><label class="lg-x"><input type="checkbox" id="lg-mvum"><span><b>Forest roads open to vehicles</b><small>Appears when zoomed in.</small></span></label><p class="warn">Tap the map to see who manages that spot.</p>';
+  el.innerHTML=h;
+  el.querySelectorAll(".lg-i").forEach(b=>b.onclick=()=>{S.land[b.dataset.k]=S.land[b.dataset.k]?0:1;landChanged()});
+  el.querySelectorAll("[data-ca]").forEach(i=>{i.onchange=()=>{S.ca[i.dataset.ca]=i.checked;kvSet("ca",S.ca);buildCA()}});
+  $("#lg-wm").onchange=e=>{S.wm=e.target.checked;kvSet("wm",S.wm?1:0);setWm()};
+  $("#lg-master").onchange=e=>{S.landOn=e.target.checked;landChanged()};
+  $("#lg-fires").onchange=e=>{S.fires=e.target.checked;kvSet("fires-on",S.fires?1:0);if(S.fires)loadFires();else drawFires(null)};
+  $("#lg-mvum").onchange=e=>{S.mvum=e.target.checked;kvSet("mvum-on",S.mvum?1:0);setMvum()};
+  $("#btn-legend").onclick=()=>{el.hidden=!el.hidden;$("#btn-legend").setAttribute("aria-expanded",String(!el.hidden))};
+  $("#landop").oninput=e=>{S.landOp=e.target.value/100;if(landLayer)landLayer.setOpacity(S.landOp);Object.values(caLayers).forEach(l=>l.setOpacity(S.landOp));if(wmLayer)wmLayer.setOpacity(Math.min(1,S.landOp+.1));kvSet("landOp",S.landOp)};
+}
+
+/* ---------- Canada land layers ---------- */
+const CA=[
+ {k:"on",label:"Ontario Crown land",svc:"https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open08/MapServer",layers:"show:34",color:[22,163,74],minZoom:4,note:"Unpatented provincial Crown land. Canadian residents can camp free, up to 21 days."},
+ {k:"bc",label:"BC Crown land ownership",svc:"https://delivery.maps.gov.bc.ca/arcgis/rest/services/whse/bcgw_pub_whse_tantalis/MapServer",layers:"show:27",minZoom:10,note:"Provincial ownership map. Appears when zoomed in. Most Crown land allows up to 14 days."},
+ {k:"bcrec",label:"BC recreation sites",svc:"https://delivery.maps.gov.bc.ca/arcgis/rest/services/whse/bcgw_pub_whse_forest_tenure/MapServer",layers:"show:5,13",minZoom:8,note:"Forest recreation sites and campgrounds."},
+ {k:"usfstr",g:"trail",label:"Forest Service trails",svc:"https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_TrailNFSPublish_01/MapServer",layers:"show:0",color:[194,65,12],line:true,minZoom:10,note:"National Forest trail system. Tap a trail to see its name and length."},
+ {k:"cpcad",label:"Parks and protected areas",svc:"https://maps-cartes.ec.gc.ca/arcgis/rest/services/CWS_SCF/CPCAD/MapServer",layers:"show:0",minZoom:2,note:"Camping is usually limited to designated sites. Fades out when zoomed in very close."}
+];
+S.ca={on:1,bc:1,bcrec:1,cpcad:1,usfstr:1};S.wm=true;
+const caLayers={};
+function caDyn(c){
+  if(!c.color||c.plain)return null;const id=+c.layers.replace("show:","");
+  if(c.line)return JSON.stringify([{id,source:{type:"mapLayer",mapLayerId:id},drawingInfo:{renderer:{type:"simple",symbol:{type:"esriSLS",style:"esriSLSDash",color:c.color.concat(255),width:2.2}}}}]);
+  return JSON.stringify([{id,source:{type:"mapLayer",mapLayerId:id},drawingInfo:{renderer:{type:"simple",symbol:{type:"esriSFS",style:"esriSFSSolid",color:c.color.concat(150),outline:{type:"esriSLS",style:"esriSLSSolid",color:c.color.map(v=>Math.round(v*.5)).concat(255),width:1}}}}}]);
+}
+function buildCA(){
+  CA.forEach(c=>{
+    if(caLayers[c.k]){map.removeLayer(caLayers[c.k]);delete caLayers[c.k]}
+    if(!S.ca[c.k])return;
+    const dyn=caDyn(c);
+    const l=new ExportTiles("",{key:"ca-"+c.k+(dyn?"-d":""),svc:c.svc,layers:c.layers,dyn:dyn,pane:"lands",opacity:S.landOp,maxZoom:18,minZoom:c.minZoom,attribution:c.label,crossOrigin:true});
+    let err=0;l.on("tileload",()=>{err=0});
+    l.on("tileerror",()=>{if(!navigator.onLine)return;if(dyn&&++err>=4){c.plain=true;toast(c.label+" switched to the provincial map colors.");buildCA()}});
+    caLayers[c.k]=l;map.addLayer(l);
+  });
+}
+
+/* ---------- offline regions (sources that allow saving) ---------- */
+function landSig(){return LAND.filter(t=>S.land[t.k]).map(t=>t.k).join("-")}
+function tx(lon,z){return Math.floor((lon+180)/360*Math.pow(2,z))}
+function ty(lat,z){const r=lat*Math.PI/180;return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z))}
+function plan(){
+  const b=map.getBounds();const z0=Math.max(3,Math.round(map.getZoom()));
+  const srcs=[];
+  if($("#rg-usgs").checked)srcs.push({key:"usgs",min:3,url:(z,x,y)=>TILES.usgs.u.replace("{z}",z).replace("{y}",y).replace("{x}",x)});
+  if($("#rg-land").checked&&S.landOn&&!landFallback&&dynLayers().length){const dyn=JSON.stringify(dynLayers());srcs.push({key:"land-"+landSig(),min:2,url:(z,x,y)=>ExportTiles.prototype.getTileUrl.call({options:{svc:LAND_SVC,dyn}},{z,x,y})})}
+  if($("#rg-ca").checked)CA.forEach(c=>{if(!S.ca[c.k])return;const dyn=caDyn(c);srcs.push({key:"ca-"+c.k+(dyn?"-d":""),min:c.minZoom,url:(z,x,y)=>ExportTiles.prototype.getTileUrl.call({options:{svc:c.svc,layers:c.layers,dyn}},{z,x,y})})});
+  const n=z=>Math.pow(2,z);
+  const rng=z=>({x0:Math.max(0,tx(b.getWest(),z)),x1:Math.min(n(z)-1,tx(b.getEast(),z)),y0:Math.max(0,ty(Math.min(b.getNorth(),85),z)),y1:Math.min(n(z)-1,ty(Math.max(b.getSouth(),-85),z))});
+  const count=(zmax)=>{let c=0;for(let z=z0;z<=zmax;z++){const r=rng(z);const per=(r.x1-r.x0+1)*(r.y1-r.y0+1);srcs.forEach(s=>{if(z>=s.min)c+=per})}return c};
+  let zmax=Math.min(14,z0+3);while(zmax>z0&&count(zmax)>3000)zmax--;
+  const total=count(zmax);const jobs=[];
+  if(total<=3000)for(let z=z0;z<=zmax;z++){const r=rng(z);for(let x=r.x0;x<=r.x1;x++)for(let y=r.y0;y<=r.y1;y++)srcs.forEach(s=>{if(z>=s.min)jobs.push({id:s.key+"/"+z+"/"+x+"/"+y,url:s.url(z,x,y)})})}
+  return{srcs,z0,zmax,total,jobs,tooBig:total>3000,b};
+}
+function estimate(){
+  if(!$("#rg-est")||rgBusy)return;const p=plan();
+  $("#rg-est").textContent=!p.srcs.length?"Pick at least one thing to save.":p.tooBig?"This view is too large. Zoom in on a forest or county.":"About "+p.total.toLocaleString()+" tiles, zoom "+p.z0+" to "+p.zmax+", roughly "+Math.max(1,Math.round(p.total*0.02))+" MB.";
+}
+let rgBusy=false,rgAbort=false;
+async function saveRegion(){
+  const p=plan();
+  if(!p.srcs.length){toast("Pick at least one thing to save");return}
+  if(p.tooBig){toast("Too large. Zoom in on a smaller area.");return}
+  if(!navigator.onLine){toast("You need a connection to save a region");return}
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  rgBusy=true;rgAbort=false;$("#rg-stop").hidden=false;$("#rg-save").disabled=true;
+  let done=0,ok=0,fail=0,bytes=0;const keys=[];const jobs=p.jobs.slice();
+  async function worker(){
+    while(jobs.length&&!rgAbort){
+      const j=jobs.shift();
+      try{const r=await fetch(j.url,{mode:"cors"});if(!r.ok)throw 0;const bl=await r.blob();if(!bl.size||bl.type.indexOf("image")<0)throw 0;await kvSet("t:"+j.id,bl);keys.push(j.id);ok++;bytes+=bl.size}catch(e){fail++}
+      done++;$("#rg-est").textContent="Saving "+done+" of "+p.total+(fail?" ("+fail+" skipped)":"");
+      if(done>=10&&ok===0)rgAbort=true;
+    }
+  }
+  await Promise.all([1,2,3,4,5,6].map(worker));
+  rgBusy=false;$("#rg-stop").hidden=true;$("#rg-save").disabled=false;
+  if(!ok){$("#rg-est").textContent="Nothing was saved. The map servers may not allow saving, or the connection dropped.";return}
+  const id="r"+Date.now();const nm=$("#rg-name").value.trim()||"Region "+(S.regions.length+1);
+  S.regions.push({id,name:nm,z0:p.z0,z1:p.zmax,n:ok,bytes,at:Date.now(),b:[p.b.getSouth(),p.b.getWest(),p.b.getNorth(),p.b.getEast()]});
+  await kvSet("rk:"+id,keys);await kvSet("regions",S.regions);renderRegions();
+  $("#rg-est").textContent=(rgAbort&&jobs.length?"Stopped. ":"Saved. ")+ok+" tiles kept on this device"+(fail?", "+fail+" skipped":"")+". For offline use, set the base map to USGS.";
+  draw();
+}
+function renderRegions(){
+  const el=$("#rg-list");if(!el)return;
+  el.innerHTML=S.regions.length?S.regions.map((r,i)=>'<div class="rg"><span><b>'+esc(r.name)+'</b><small>Zoom '+r.z0+" to "+r.z1+" · "+r.n.toLocaleString()+" tiles · "+(r.bytes/1048576).toFixed(1)+" MB</small></span><button class=\"btn\" data-go=\""+i+'">Go to</button><button class="btn" data-del="'+i+'">Delete</button></div>').join(""):'<p>No saved regions yet.</p>';
+  el.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{const r=S.regions[+b.dataset.go];map.fitBounds([[r.b[0],r.b[1]],[r.b[2],r.b[3]]]);$("#drawer").classList.remove("open")});
+  el.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{const r=S.regions[+b.dataset.del];const keys=(await kvGet("rk:"+r.id))||[];for(const k of keys)await kvDel("t:"+k);await kvDel("rk:"+r.id);S.regions.splice(+b.dataset.del,1);await kvSet("regions",S.regions);renderRegions();toast("Region deleted")});
+}
+
+/* ---------- track recording ---------- */
+let rec=null,recWatch=null,recLine=null,recTimer=null,wake=null;
+const trackLayer=L.layerGroup().addTo(map);
+function trackDist(pts){let d=0;for(let i=1;i<pts.length;i++)d+=hav(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);return d}
+function dur(ms){const s=Math.round(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+":"+String(m).padStart(2,"0")+":"+String(s%60).padStart(2,"0")}
+function lockScreen(){try{if(navigator.wakeLock)navigator.wakeLock.request("screen").then(w=>{wake=w}).catch(()=>{})}catch(e){}}
+function startRec(){
+  if(!navigator.geolocation){toast("Location is not available in this browser");return}
+  rec={id:"t"+Date.now(),start:Date.now(),pts:[]};
+  trackLayer.clearLayers();recLine=L.polyline([],{color:"#e11d48",weight:4,opacity:.9}).addTo(trackLayer);
+  recWatch=navigator.geolocation.watchPosition(p=>{
+    const c=p.coords;if(!rec||c.accuracy>60)return;
+    const pt=[c.latitude,c.longitude,Date.now(),c.altitude==null?null:Math.round(c.altitude)];
+    const l=rec.pts[rec.pts.length-1];if(l&&hav(l[0],l[1],pt[0],pt[1])<.008)return;
+    rec.pts.push(pt);recLine.addLatLng([pt[0],pt[1]]);
+  },e=>toast(e.code===1?"Location permission was denied":"Waiting for a GPS fix"),{enableHighAccuracy:true,maximumAge:0,timeout:30000});
+  lockScreen();recTimer=setInterval(()=>{$("#stat").textContent=statText()},1000);
+  syncRec();toast("Recording. Keep this page open and the screen on.");
+}
+async function stopRec(){
+  navigator.geolocation.clearWatch(recWatch);clearInterval(recTimer);try{if(wake)wake.release()}catch(e){}wake=null;
+  const r=rec;rec=null;trackLayer.clearLayers();
+  if(r.pts.length>=2){const d=new Date(r.start);const tr={id:r.id,name:"Track "+d.toLocaleDateString()+" "+d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}),start:r.start,end:Date.now(),km:trackDist(r.pts),pts:r.pts};S.tracks.unshift(tr);await kvSet("tracks",S.tracks);renderTracks();draw();toast("Track saved under Menu, Tracks")}
+  else toast("Not enough movement to save a track");
+  syncRec();netui();
+}
+document.addEventListener("visibilitychange",()=>{if(rec&&document.visibilityState==="visible")lockScreen()});
+function syncRec(){
+  const on=!!rec;$("#btn-rec").classList.toggle("rec",on);$("#btn-rec").setAttribute("aria-pressed",String(on));
+  const b=$("#tr-rec");if(b)b.textContent=on?"Stop recording":"Start recording";
+}
+function gpxTrack(t){return '<?xml version="1.0"?><gpx version="1.1" creator="Dispersed Camp Map" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>'+esc(t.name)+"</name><trkseg>"+t.pts.map(p=>'<trkpt lat="'+p[0]+'" lon="'+p[1]+'">'+(p[3]!=null?"<ele>"+p[3]+"</ele>":"")+"<time>"+new Date(p[2]).toISOString()+"</time></trkpt>").join("")+"</trkseg></trk></gpx>"}
+function renderTracks(){
+  const el=$("#tr-list");if(!el)return;
+  el.innerHTML=S.tracks.length?S.tracks.map((t,i)=>'<div class="rg"><span><b>'+esc(t.name)+'</b><small>'+fmt(t.km)+" · "+dur(t.end-t.start)+" · "+t.pts.length+' points</small></span><button class="btn" data-show="'+i+'">Show</button><button class="btn" data-gpx="'+i+'">GPX</button><button class="btn" data-tdel="'+i+'">Delete</button></div>').join(""):"<p>No tracks yet.</p>";
+  el.querySelectorAll("[data-show]").forEach(b=>b.onclick=()=>{const t=S.tracks[+b.dataset.show];trackLayer.clearLayers();const l=L.polyline(t.pts.map(p=>[p[0],p[1]]),{color:"#2563eb",weight:4}).addTo(trackLayer);l.on("click",ev=>{L.DomEvent.stopPropagation(ev);showTrack(t)});map.fitBounds(l.getBounds().pad(.2));$("#drawer").classList.remove("open")});
+  el.querySelectorAll("[data-gpx]").forEach(b=>b.onclick=()=>{const t=S.tracks[+b.dataset.gpx];dl(t.name.replace(/[^\w-]+/g,"-")+".gpx",gpxTrack(t),"application/gpx+xml")});
+  el.querySelectorAll("[data-tdel]").forEach(b=>b.onclick=async()=>{S.tracks.splice(+b.dataset.tdel,1);await kvSet("tracks",S.tracks);renderTracks();draw()});
+}
+$("#btn-rec").onclick=()=>rec?stopRec():startRec();
+$("#tr-rec").onclick=()=>rec?stopRec():startRec();
+$("#rg-save").onclick=saveRegion;$("#rg-stop").onclick=()=>{rgAbort=true};
+["rg-usgs","rg-land","rg-ca"].forEach(id=>$("#"+id).addEventListener("change",estimate));
+$("#btn-menu").addEventListener("click",estimate);
+map.on("moveend",()=>{if($("#drawer").classList.contains("open"))estimate()});
+$("#lb").onclick=()=>{$("#lb").hidden=true};
+
+/* ---------- trails: hiking route tiles, hike routes ---------- */
+const TR_SVC="https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_TrailNFSPublish_01/MapServer";
+let wmLayer=null;
+function setWm(){
+  if(wmLayer){map.removeLayer(wmLayer);wmLayer=null}
+  if(!S.wm)return;
+  wmLayer=new CachedTiles("https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png",{key:"wm-hiking",pane:"lands",maxZoom:18,maxNativeZoom:18,minZoom:10,opacity:.95,attribution:"Waymarked Trails, OpenStreetMap contributors",crossOrigin:true}).addTo(map);
+  let err=0;wmLayer.on("tileload",()=>{err=0});wmLayer.on("tileerror",()=>{if(navigator.onLine&&++err===6)toast("Hiking route tiles are not loading right now.")});
+}
+const hikeRoute=L.layerGroup().addTo(map);const routeCache={};
+function hikeBtns(x){
+  if(x.type!=="HIKE")return "";const rt=routeCache[x.id];
+  return '<button class="btn p" id="s-route">'+(rt?"Hide route":"Show route")+'</button><a class="btn" target="_blank" rel="noopener" href="https://www.alltrails.com/search?q='+encodeURIComponent(x.name)+'">AllTrails search</a>'+(x.site?'<a class="btn" target="_blank" rel="noopener" href="'+esc(x.site)+'">Website</a>':"")+(rt?'<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+rt.start[0]+","+rt.start[1]+'">Directions to start</a>':"");
+}
+function drawRoute(x){
+  hikeRoute.clearLayers();const r=routeCache[x.id];if(!r)return;
+  r.lines.forEach(l=>L.polyline(l,{color:"#fff",weight:8,opacity:.85,interactive:false}).addTo(hikeRoute));
+  const ls=r.lines.map(l=>L.polyline(l,{color:"#0f766e",weight:4.5,interactive:false}).addTo(hikeRoute));
+  map.fitBounds(L.featureGroup(ls).getBounds().pad(.15));
+}
+async function toggleRoute(x){
+  if(routeCache[x.id]){delete routeCache[x.id];hikeRoute.clearLayers();select(x);return}
+  if(!navigator.onLine){toast("Drawing a route needs a connection");return}
+  toast("Loading route");
+  let data=null;const q="[out:json][timeout:40];rel("+x.id.slice(2)+");out geom;";
+  for(const u of OP){try{const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"}});if(r.ok){data=await r.json();break}}catch(e){}}
+  const el=data&&data.elements&&data.elements[0];
+  if(!el||!el.members){toast("Could not load that route");return}
+  const lines=el.members.filter(m=>m.type==="way"&&m.geometry&&m.geometry.length>1).map(m=>m.geometry.map(g=>[g.lat,g.lon]));
+  if(!lines.length){toast("No route line is mapped for this hike");return}
+  let km=0;lines.forEach(l=>{km+=trackDist(l)});
+  routeCache[x.id]={lines,km,start:lines[0][0]};
+  drawRoute(x);select(x);
+}
+
+/* ---------- tap the map: who manages this spot ---------- */
+const probeLayer=L.layerGroup().addTo(map);let probeTok=0;
+const AG=[[/BLM/,"Bureau of Land Management","ok"],[/USFS|FOREST|^FS\b/,"National Forest","ok"],[/NPS|PARK SERV/,"National Park Service","no"],[/FWS|WILDLIFE/,"Fish and Wildlife Service","no"],[/DOD|DEFENSE|ARMY|NAVY|AIR FORCE|MILIT/,"Military","no"],[/BIA|INDIAN|TRIBAL/,"Tribal (BIA)","no"],[/BOR\b|RECLAM/,"Bureau of Reclamation","var"],[/STATE|\bST\b|SLB/,"State land","var"],[/LOCAL|COUNTY|CITY/,"Local government","var"]];
+function classify(code,type){const s=((code||"")+" "+(type||"")).toUpperCase();for(const a of AG)if(a[0].test(s))return{n:a[1],g:a[2]};return{n:code||"Public land",g:"var"}}
+const ca=k=>CA.find(c=>c.k===k);
+function pip(pt,ring){let ins=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins}return ins}
+function regionAt(ll){
+  const pt=[ll.lng,ll.lat];
+  for(const s of BASE.states)for(const poly of s.p){if(pip(pt,poly[0])){let hole=false;for(let i=1;i<poly.length;i++)if(pip(pt,poly[i]))hole=true;if(!hole)return{state:s.n,country:s.c==="CA"?"Canada":"United States"}}}
+  return null;
+}
+function jsonp(url){return new Promise((res,rej)=>{const cb="__ags"+Math.random().toString(36).slice(2);const s=document.createElement("script");const clean=()=>{clearTimeout(to);delete window[cb];s.remove()};const to=setTimeout(()=>{clean();rej()},9000);window[cb]=d=>{clean();res(d)};s.onerror=()=>{clean();rej()};s.src=url+"&callback="+cb;document.head.appendChild(s)})}
+function tolM(ll,px){return Math.max(15,Math.round(px*156543.03*Math.cos(ll.lat*Math.PI/180)/Math.pow(2,map.getZoom())))}
+async function agsQuery(url,ll,o){
+  const u=url+"/query?geometry="+ll.lng+","+ll.lat+"&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects"+(o.dist?"&distance="+o.dist+"&units=esriSRUnit_Meter":"")+"&outFields="+(o.fields||"*")+(o.geom?"&outSR=4326&returnGeometry=true&geometryPrecision=5":"&returnGeometry=false")+"&f=json";
+  let j=null;
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),9000);
+  try{const r=await fetch(u,{signal:ctl.signal});j=await r.json()}catch(e){try{j=await jsonp(u)}catch(e2){j=null}}finally{clearTimeout(to)}
+  return j?(j.features||(j.error?null:[])):null;
+}
+function kvHtml(a,max){
+  const skip=/^(objectid|shape|globalid|fid|st_|created|last_edit|edit|gdb|sde)/i;const rows=[];
+  Object.keys(a||{}).forEach(k=>{
+    if(rows.length>=max||skip.test(k))return;let v=a[k];if(v===null||v===undefined||v==="")return;
+    if(typeof v==="number"){if(!isFinite(v))return;if(v%1)v=v.toFixed(2)}
+    v=String(v);if(v.length>90)v=v.slice(0,87)+"…";
+    rows.push('<dt>'+esc(k.replace(/_/g," ").toLowerCase().replace(/^./,c=>c.toUpperCase()))+'</dt><dd style="font-family:var(--sans)">'+esc(v)+"</dd>");
+  });
+  return rows.join("");
+}
+function distToWay(w,ll){
+  const k=Math.cos(ll.lat*Math.PI/180),g=w.geometry||[];let best=1e12;
+  const P=(p)=>[(p.lon-ll.lng)*111320*k,(p.lat-ll.lat)*110540];
+  for(let i=0;i<g.length;i++){const a=P(g[i]);let d=Math.hypot(a[0],a[1]);if(i>0){const b=P(g[i-1]);const dx=a[0]-b[0],dy=a[1]-b[1],l2=dx*dx+dy*dy;if(l2>0){const u=Math.max(0,Math.min(1,-(b[0]*dx+b[1]*dy)/l2));d=Math.min(d,Math.hypot(b[0]+u*dx,b[1]+u*dy))}}best=Math.min(best,d)}
+  return best;
+}
+async function osmTrails(ll){
+  const rad=tolM(ll,16);
+  const q='[out:json][timeout:25];way(around:'+rad+','+ll.lat+','+ll.lng+')["highway"~"^(path|footway|track|bridleway|steps|cycleway)$"]->.w;.w out geom tags 10;rel(bw.w)["route"~"^(hiking|foot)$"];out tags center 8;';
+  for(const u of OP){
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),15000);
+    try{const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctl.signal});if(r.ok){const j=await r.json();const ways=j.elements.filter(e=>e.type==="way").sort((a,b)=>distToWay(a,ll)-distToWay(b,ll));return{ways,rels:j.elements.filter(e=>e.type==="relation"),rad}}}catch(e){}finally{clearTimeout(to)}
+  }
+  return null;
+}
+function hikeFromRel(el){
+  const t=el.tags||{},nets={lwn:"Local",rwn:"Regional",nwn:"National",iwn:"International"},d=parseFloat(t.distance);
+  return{id:"or"+el.id,type:"HIKE",name:t.name||t.ref||"Hiking route",lat:el.center?el.center.lat:0,lon:el.center?el.center.lon:0,reg:"",note:t.description||"",net:nets[t.network]||"",dist:isFinite(d)?(/mi/i.test(t.distance)?d*1.609:d):0,ref:t.ref||"",op:t.operator||"",sac:t.sac_scale||"",site:/^https?:\/\//i.test(t.website||"")?t.website:""};
+}
+function showTrack(t){
+  S.sel={probe:1};
+  sheet.innerHTML='<div class="grab"></div><h2>'+esc(t.name)+'</h2><div class="sub">Your recorded track</div><div class="scroll"><dl class="kv"><dt>Distance</dt><dd>'+fmt(t.km)+'</dd><dt>Time</dt><dd>'+dur(t.end-t.start)+'</dd><dt>Points</dt><dd>'+t.pts.length+'</dd><dt>Started</dt><dd>'+new Date(t.start).toLocaleString()+'</dd></dl><div class="btns"><button class="btn p" id="tk-gpx">Export GPX</button><button class="btn" id="tk-back">Back to list</button></div></div>';
+  $("#tk-gpx").onclick=()=>dl(t.name.replace(/[^\w-]+/g,"-")+".gpx",gpxTrack(t),"application/gpx+xml");
+  $("#tk-back").onclick=()=>{trackLayer.clearLayers();renderNearby()};requestAnimationFrame(sheetH);
+}
+async function probe(ll){
+  const tok=++probeTok;probeLayer.clearLayers();hikeRoute.clearLayers();Object.keys(routeCache).forEach(k=>delete routeCache[k]);
+  L.circleMarker(ll,{radius:6,color:"#fff",weight:2,fillColor:"#111",fillOpacity:1,interactive:false}).addTo(probeLayer);
+  S.sel={probe:1};
+  const pos=ll.lat.toFixed(5)+", "+ll.lng.toFixed(5),reg=regionAt(ll),z=map.getZoom(),on=navigator.onLine;
+  const where=reg?reg.state+", "+reg.country:"Outside the mapped area";
+  sheet.innerHTML='<div class="grab"></div><h2>Checking this spot</h2><div class="sub">'+esc(where)+" · "+pos+"</div>";requestAnimationFrame(sheetH);
+  const jobs={},st=reg&&reg.state;
+  if(on){
+    if(S.landOn)jobs.land=agsQuery(LAND_SVC+"/1",ll,{fields:"ADMIN_UNIT_NAME,ADMIN_AGENCY_CODE,ADMIN_UNIT_TYPE,ADMIN_ST"});
+    if(S.ca.usfstr&&z>=10)jobs.trail=agsQuery(TR_SVC+"/0",ll,{dist:tolM(ll,16),geom:true,fields:"trail_name,trail_no,gis_miles,trail_surface,hiker_pedestrian_managed,managing_org"});
+    if(S.mvum&&z>=9)jobs.mvum=agsQuery(MVUM+"/1",ll,{dist:tolM(ll,16)});
+    if(S.ca.on&&st==="Ontario")jobs.on=agsQuery(ca("on").svc+"/34",ll,{});
+    if(S.ca.bc&&z>=10&&st==="British Columbia")jobs.bc=agsQuery(ca("bc").svc+"/27",ll,{});
+    if(S.ca.bcrec&&z>=8&&st==="British Columbia")jobs.bcrec=Promise.all([agsQuery(ca("bcrec").svc+"/5",ll,{dist:tolM(ll,20)}),agsQuery(ca("bcrec").svc+"/13",ll,{dist:tolM(ll,20)})]).then(r=>(r[0]||[]).concat(r[1]||[]));
+    if(S.ca.cpcad&&reg&&reg.country==="Canada")jobs.cp=agsQuery(ca("cpcad").svc+"/0",ll,{});
+    if(S.wm&&z>=11)jobs.osm=osmTrails(ll);
+  }
+  const keys=Object.keys(jobs),vals=await Promise.all(keys.map(k=>jobs[k]));if(tok!==probeTok)return;
+  const R={},failed=[];keys.forEach((k,i)=>{R[k]=vals[i];if(vals[i]===null)failed.push(k)});
+  let title=where,sub=pos,msg="",dot="var(--muted)";
+  if(!on)msg="Land and trail details need a connection. The region name works offline.";
+  else if(R.land&&R.land.length){const at=R.land[0].attributes||{};const k=classify(at.ADMIN_AGENCY_CODE,at.ADMIN_UNIT_TYPE);dot=GCOL[k.g];title=k.n;sub=[at.ADMIN_UNIT_NAME,at.ADMIN_ST].filter(Boolean).join(" · ")||where;
+    msg=k.g==="ok"?"Dispersed camping is usually allowed on this land. Confirm with the local office, and check fire restrictions and closures.":k.g==="no"?"Dispersed camping is generally not allowed here.":"Rules vary on this land. Check with the managing agency before you camp."}
+  else if(R.land&&!R.land.length)msg=(reg&&reg.country==="Canada")?"Not mapped as US federal or state land. Check the Canada layers below, and provincial Crown land rules.":"Not mapped as US federal or state land. It could be private. Ask the owner or check local rules.";
+  let secs="";const sec=(h,rows)=>{if(rows)secs+='<h4 class="sec">'+h+'</h4><dl class="kv">'+rows+"</dl>"};
+  (R.trail||[]).slice(0,2).forEach(f=>sec("Forest Service trail",kvHtml(f.attributes,8)));
+  if(R.trail&&R.trail[0]&&R.trail[0].geometry&&R.trail[0].geometry.paths)R.trail[0].geometry.paths.forEach(p=>{const pl=p.map(c=>[c[1],c[0]]);L.polyline(pl,{color:"#fff",weight:9,opacity:.9,interactive:false}).addTo(probeLayer);L.polyline(pl,{color:"#f59e0b",weight:5,interactive:false}).addTo(probeLayer)});
+  (R.mvum||[]).slice(0,2).forEach(f=>sec("Forest road (motor vehicle use map)",kvHtml(f.attributes,8)));
+  if(R.on&&R.on[0])sec("Ontario Crown land",kvHtml(R.on[0].attributes,8));
+  if(R.bc&&R.bc[0])sec("BC land ownership",kvHtml(R.bc[0].attributes,8));
+  (R.bcrec||[]).slice(0,2).forEach(f=>sec("BC recreation site",kvHtml(f.attributes,8)));
+  if(R.cp&&R.cp[0])sec("Protected area",kvHtml(R.cp[0].attributes,8));
+  let hl=null;
+  if(R.osm){
+    const w=R.osm.ways[0];
+    if(w){const tg=w.tags||{};const pick={};["name","highway","surface","sac_scale","trail_visibility","access","foot","bicycle","horse","operator","incline"].forEach(k=>{if(tg[k])pick[k]=tg[k]});sec("Trail segment (OpenStreetMap)",kvHtml(pick,8)||'<dt>Segment</dt><dd style="font-family:var(--sans)">Unnamed '+esc(tg.highway||"path")+"</dd>");
+      if(w.geometry){const pl=w.geometry.map(g=>[g.lat,g.lon]);L.polyline(pl,{color:"#fff",weight:9,opacity:.9,interactive:false}).addTo(probeLayer);L.polyline(pl,{color:"#f59e0b",weight:5,interactive:false}).addTo(probeLayer)}}
+    if(R.osm.rels.length)secs+='<h4 class="sec">Part of these hiking routes</h4><div class="btns">'+R.osm.rels.map((r,i)=>'<button class="btn" data-rel="'+i+'">'+esc((r.tags&&(r.tags.name||r.tags.ref))||"Hiking route")+"</button>").join("")+"</div>";
+  }
+  if(on&&!secs&&!R.land)secs='<p class="warn">Turn on a land or trail layer, and zoom in, to see what is at this spot.</p>';
+  else if(on&&!secs&&R.land&&R.land.length&&z>=10)secs='<p class="warn">No trail or road details found right here. Zoom in and tap closer to a line.</p>';
+  if(failed.length)secs+='<p class="warn">Some lookups did not respond ('+failed.join(", ")+"). The server may be slow or blocking requests from this page.</p>";
+  if(on&&z>=10&&(S.wm||S.ca.usfstr)&&!(R.trail&&R.trail.length)&&!(R.osm&&R.osm.ways.length)&&!failed.length)secs+='<p class="warn">No trail found within about '+tolM(ll,16)+' m of your tap. Tap closer to the line, or zoom in.</p>';
+  sheet.innerHTML='<div class="grab"></div><h2><span class="gdot" style="background:'+dot+'"></span>'+esc(title)+'</h2><div class="sub">'+esc(sub)+'</div><div class="scroll">'+(msg?'<p class="warn" style="font-size:13px;color:var(--fg)">'+msg+"</p>":"")+'<dl class="kv"><dt>Region</dt><dd style="font-family:var(--sans)">'+esc(where)+'</dd><dt>Position</dt><dd>'+pos+'</dd></dl>'+secs+'<div class="btns"><button class="btn p" id="pr-pin">Drop pin here</button><button class="btn" id="pr-copy">Copy coordinates</button><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+ll.lat+","+ll.lng+'">Directions</a><button class="btn" id="pr-back">Back to list</button></div></div>';
+  $("#pr-pin").onclick=()=>{probeLayer.clearLayers();editPin({id:"p"+Date.now(),type:"PIN",name:"Camp spot",lat:ll.lat,lon:ll.lng,note:(R.land&&R.land.length?title+(sub!==where?", "+sub:""):""),reg:""},true)};
+  $("#pr-copy").onclick=()=>{(navigator.clipboard?navigator.clipboard.writeText(pos):Promise.reject()).then(()=>toast("Coordinates copied"),()=>toast(pos))};
+  $("#pr-back").onclick=()=>{probeLayer.clearLayers();renderNearby()};
+  sheet.querySelectorAll("[data-rel]").forEach(bt=>bt.onclick=()=>{const h=hikeFromRel(R.osm.rels[+bt.dataset.rel]);select(h)});
+  requestAnimationFrame(sheetH);
+}
+map.on("click",e=>probe(e.latlng));
+$("#q").addEventListener("keydown",e=>{
+  if(e.key!=="Enter")return;clearTimeout(qt);
+  const m=/^\s*(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)\s*$/.exec(e.target.value);
+  if(m&&Math.abs(+m[1])<=90&&Math.abs(+m[2])<=180){const ll=L.latLng(+m[1],+m[2]);map.setView(ll,12,{animate:false});e.target.blur();probe(ll)}
+});
+
+/* ---------- markers ---------- */
+const mkLayer=L.layerGroup().addTo(map),meLayer=L.layerGroup().addTo(map);
+function all(){
+  const a=AREAS.map((r,i)=>({id:"a"+i,name:r[0],lat:r[1],lon:r[2],type:r[3],reg:r[4],note:r[5]}));
+  S.osm.forEach(o=>a.push(o));S.water.forEach(o=>a.push(o));S.tower.forEach(o=>a.push(o));S.hikes.forEach(o=>a.push(o));S.pins.forEach(p=>a.push(p));return a;
+}
+function visible(){
+  const q=S.q.trim().toLowerCase();
+  return all().filter(x=>S.on[x.type]&&(!q||(x.name+" "+(x.reg||"")+" "+(x.note||"")+" "+TYPES[x.type].n).toLowerCase().includes(q)));
+}
+function icon(x){return L.divIcon({className:"",html:'<div class="mk'+(x.type==="PIN"?" pin":x.type==="TOWER"?" tw":x.type==="HIKE"?" hk":x.type==="WATER"?" wt":"")+'" style="--c:var('+TYPES[x.type].c+')"></div>',iconSize:[14,14],iconAnchor:[7,7]})}
+function draw(){
+  mkLayer.clearLayers();const v=visible();
+  v.forEach(x=>{
+    const m=L.marker([x.lat,x.lon],{icon:icon(x),keyboard:true,title:x.name,draggable:x.type==="PIN"});
+    m.on("click",()=>select(x));
+    if(x.type==="PIN")m.on("dragend",()=>{x.lat=m.getLatLng().lat;x.lon=m.getLatLng().lng;savePins();select(x)});
+    m.addTo(mkLayer);
+  });
+  $("#counts").textContent=AREAS.length+" areas, "+(S.osm.length+S.water.length+S.tower.length+S.hikes.length)+" saved map points, "+S.pins.length+" pins, "+S.tracks.length+" tracks";
+  if(!S.sel)renderNearby();
+}
+
+/* ---------- distance ---------- */
+function hav(a,b,c,d){const R=6371,t=Math.PI/180,dl=(c-a)*t,dg=(d-b)*t,x=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dg/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function fmt(km){const v=S.units==="mi"?km*0.621371:km;return (v<10?v.toFixed(1):Math.round(v).toLocaleString())+" "+S.units}
+function origin(){return S.me||{lat:map.getCenter().lat,lon:map.getCenter().lng,me:false}}
+
+/* ---------- sheet ---------- */
+const sheet=$("#sheet");
+function sheetH(){document.documentElement.style.setProperty("--sheet",(sheet.offsetHeight)+"px")}
+function renderNearby(){
+  S.sel=null;hikeRoute.clearLayers();Object.keys(routeCache).forEach(k=>delete routeCache[k]);const o=origin();
+  const list=visible().map(x=>({x,d:hav(o.lat,o.lon,x.lat,x.lon)})).sort((a,b)=>a.d-b.d).slice(0,8);
+  sheet.innerHTML='<div class="grab"></div><h2>Closest areas</h2><div class="sub">'+(S.me?"From your location":"From the center of the map")+" · "+visible().length+" shown</div><div class=\"scroll\">"+
+    (list.length?list.map((r,i)=>'<button class="row" data-i="'+i+'" style="--c:var('+TYPES[r.x.type].c+')"><i></i><span><b>'+esc(r.x.name)+'</b><small>'+esc(TYPES[r.x.type].n)+(r.x.reg?" · "+esc(r.x.reg):"")+'</small></span><span class="d">'+fmt(r.d)+'</span></button>').join(""):'<div class="sub" style="padding:10px 0">Nothing matches. Clear the search or turn a type back on.</div>')+"</div>";
+  sheet.querySelectorAll(".row").forEach(b=>b.onclick=()=>{const x=list[+b.dataset.i].x;map.flyTo([x.lat,x.lon],Math.max(map.getZoom(),9),{duration:.6});select(x)});
+  requestAnimationFrame(sheetH);
+}
+function stars(n){return "★★★★★".slice(0,n)+"☆☆☆☆☆".slice(0,5-n)}
+function select(x){
+  S.sel=x;const o=origin();const d=hav(o.lat,o.lon,x.lat,x.lon);const isPin=x.type==="PIN";
+  let rows='<dt>Position</dt><dd>'+x.lat.toFixed(5)+", "+x.lon.toFixed(5)+"</dd>";
+  if(x.rating)rows+='<dt>Rating</dt><dd style="color:#f59e0b;font-size:16px;letter-spacing:2px">'+stars(x.rating)+"</dd>";
+  if(x.visited)rows+='<dt>Last visited</dt><dd>'+esc(x.visited)+"</dd>";
+  if(x.signal!=null&&x.signal!=="")rows+='<dt>Cell signal</dt><dd>'+(x.signal==0?"No signal":x.signal+" of 4 bars")+"</dd>";
+  if(x.note)rows+='<dt>Notes</dt><dd style="font-family:var(--sans)">'+esc(x.note)+"</dd>";
+  if(x.tags)rows+='<dt>OSM tags</dt><dd>'+esc(x.tags)+"</dd>";
+  if(x.type==="HIKE"){const rt=routeCache[x.id];
+    if(x.net)rows+='<dt>Network</dt><dd>'+esc(x.net)+"</dd>";
+    if(x.dist)rows+='<dt>Length</dt><dd>'+fmt(x.dist)+" (listed)</dd>";
+    if(rt)rows+='<dt>Mapped</dt><dd>'+fmt(rt.km)+" of trail segments</dd>";
+    if(x.ref)rows+='<dt>Ref</dt><dd>'+esc(x.ref)+"</dd>";
+    if(x.op)rows+='<dt>Managed by</dt><dd style="font-family:var(--sans)">'+esc(x.op)+"</dd>";
+    if(x.sac)rows+='<dt>Difficulty</dt><dd>'+esc(x.sac)+"</dd>"}
+  const warn=x.type==="HIKE"?"Drawn from OpenStreetMap volunteers. The pin is the middle of the route, not the trailhead. Check trail conditions and closures before you go.":isPin?"Your own pin. Drag it on the map to move it.":x.type==="OSM"?"Community-mapped site. Check that camping is allowed before you set up.":x.type==="WATER"?"Treat water from springs and wells before drinking. Taps and water points can be dry or shut off seasonally.":x.type==="TOWER"?"Mapped in OpenStreetMap, which is incomplete. A nearby tower does not guarantee signal.":"Regional anchor, not an exact site. Check the managing office for current rules, closures, and fire restrictions.";
+  const rules=(isPin||x.type==="WATER"||x.type==="TOWER"||x.type==="HIKE")?"":'<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/search?q='+encodeURIComponent(x.name+" dispersed camping rules fire restrictions")+'">Rules</a>';
+  sheet.innerHTML='<div class="grab"></div><h2>'+esc(x.name)+'</h2><div class="sub">'+esc(TYPES[x.type].n)+(x.reg?" · "+esc(x.reg):"")+' · '+fmt(d)+(S.me?" from you":" from map center")+'</div>'+
+    '<div class="scroll"><dl class="kv">'+rows+'</dl>'+
+    ((x.photos&&x.photos.length)?'<div class="ph">'+x.photos.map((p,i)=>'<img data-i="'+i+'" alt="Photo '+(i+1)+'" src="'+p+'">').join("")+"</div>":"")+
+    '<div class="btns"><button class="btn p" id="s-copy">Copy coordinates</button><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+x.lat+","+x.lon+'">Directions</a>'+rules+hikeBtns(x)+(isPin?'<button class="btn" id="s-edit">Edit</button><button class="btn" id="s-del">Delete</button>':'<button class="btn" id="s-save">Save as pin</button>')+'<button class="btn" id="s-back">Back to list</button></div>'+
+    '<p class="warn">'+warn+'</p></div>';
+  $("#s-copy").onclick=()=>{const t=x.lat.toFixed(5)+", "+x.lon.toFixed(5);(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Coordinates copied"),()=>toast(t))};
+  $("#s-back").onclick=renderNearby;
+  if(x.type==="HIKE"){const sr=$("#s-route");if(sr)sr.onclick=()=>toggleRoute(x)}
+  sheet.querySelectorAll(".ph img").forEach(im=>im.onclick=()=>{$("#lb img").src=im.src;$("#lb").hidden=false});
+  if(isPin){$("#s-del").onclick=()=>{S.pins=S.pins.filter(p=>p!==x);savePins();renderNearby();draw();toast("Pin deleted")};$("#s-edit").onclick=()=>editPin(x)}
+  else $("#s-save").onclick=()=>editPin({id:"p"+Date.now(),type:"PIN",name:x.name,lat:x.lat,lon:x.lon,note:x.note||"",reg:""},true);
+  requestAnimationFrame(sheetH);
+}
+function readPhoto(file){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const m=900,s=Math.min(1,m/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext("2d").drawImage(im,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",.72))};im.onerror=()=>res(null);im.src=r.result};r.onerror=()=>res(null);r.readAsDataURL(file)})}
+function editPin(x,isNew){
+  const w={rating:x.rating||0,visited:x.visited||"",signal:x.signal==null?"":x.signal,photos:(x.photos||[]).slice()};
+  sheet.innerHTML='<div class="grab"></div><h2>'+(isNew?"New pin":"Edit pin")+'</h2><div class="scroll">'+
+   '<div class="field"><label for="p-name">Name</label><input id="p-name" value="'+esc(x.name)+'"></div>'+
+   '<div class="field"><label for="p-note">Notes</label><input id="p-note" value="'+esc(x.note||"")+'" placeholder="Road condition, shade, neighbors"></div>'+
+   '<div class="field"><span>Rating</span><div class="stars" id="p-stars"></div></div>'+
+   '<div class="field"><label for="p-vis">Last visited</label><div style="display:flex;gap:8px"><input id="p-vis" type="date" value="'+esc(w.visited)+'" style="flex:1;min-width:0"><button class="btn" id="p-today" type="button">Today</button></div></div>'+
+   '<div class="field"><label for="p-sig">Cell signal here</label><select id="p-sig"><option value="">Not checked</option><option value="0">No signal</option><option value="1">1 bar</option><option value="2">2 bars</option><option value="3">3 bars</option><option value="4">4 bars</option></select></div>'+
+   '<div class="field"><span>Photos (up to 4)</span><div class="ph" id="p-ph"></div><label class="btn" for="p-file" style="cursor:pointer;width:max-content">Add photos</label><input id="p-file" type="file" accept="image/*" multiple hidden></div>'+
+   '<div class="btns"><button class="btn p" id="p-save">Save pin</button><button class="btn" id="p-cancel">Cancel</button></div></div>';
+  $("#p-sig").value=String(w.signal);
+  const paintStars=()=>{const el=$("#p-stars");el.innerHTML="";for(let i=1;i<=5;i++){const b=document.createElement("button");b.type="button";b.textContent="★";b.setAttribute("aria-label",i+" star"+(i>1?"s":""));if(i<=w.rating)b.className="on";b.onclick=()=>{w.rating=(w.rating===i?0:i);paintStars()};el.appendChild(b)}};
+  const paintPh=()=>{const el=$("#p-ph");el.innerHTML="";w.photos.forEach((p,i)=>{const s=document.createElement("span");s.className="phw";s.innerHTML='<img alt="Photo '+(i+1)+'" src="'+p+'"><button type="button" aria-label="Remove photo">×</button>';s.querySelector("button").onclick=()=>{w.photos.splice(i,1);paintPh()};el.appendChild(s)})};
+  paintStars();paintPh();
+  $("#p-today").onclick=()=>{const d=new Date();$("#p-vis").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+  $("#p-file").onchange=async e=>{for(const f of Array.from(e.target.files)){if(w.photos.length>=4){toast("Four photos per pin");break}const p=await readPhoto(f);if(p)w.photos.push(p)}paintPh();e.target.value=""};
+  $("#p-save").onclick=()=>{x.name=$("#p-name").value.trim()||"Pin";x.note=$("#p-note").value.trim();x.rating=w.rating;x.visited=$("#p-vis").value;const sg=$("#p-sig").value;x.signal=sg===""?null:+sg;x.photos=w.photos;if(isNew)S.pins.push(x);savePins();draw();select(x)};
+  $("#p-cancel").onclick=()=>{draw();renderNearby()};
+  requestAnimationFrame(sheetH);$("#p-name").focus();
+}
+$("#btn-pin").onclick=()=>{const c=map.getCenter();editPin({id:"p"+Date.now(),type:"PIN",name:"Camp spot",lat:c.lat,lon:c.lng,note:"",reg:""},true)};
+function savePins(){kvSet("pins",S.pins)}
+
+/* ---------- controls ---------- */
+const chips=$("#chips");
+{const b=document.createElement("button");b.className="chip";b.id="chip-allowed";b.style.setProperty("--c","var(--accent)");b.setAttribute("aria-pressed","true");b.innerHTML="<i></i>Public land";b.onclick=()=>{S.landOn=!S.landOn;landChanged()};chips.appendChild(b)}
+Object.keys(TYPES).forEach(k=>{const b=document.createElement("button");b.className="chip";b.style.setProperty("--c","var("+TYPES[k].c+")");b.setAttribute("aria-pressed",String(!!S.on[k]));b.innerHTML="<i></i>"+TYPES[k].n;b.onclick=()=>{S.on[k]=S.on[k]?0:1;b.setAttribute("aria-pressed",String(!!S.on[k]));draw()};chips.appendChild(b)});
+let qt;$("#q").addEventListener("input",e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=/^\s*-?\d+(\.\d+)?[,\s]+-?\d+(\.\d+)?\s*$/.test(e.target.value)?"":e.target.value;S.sel=null;draw();const v=visible();if(S.q&&v.length&&v.length<AREAS.length)map.fitBounds(L.latLngBounds(v.map(x=>[x.lat,x.lon])).pad(.3),{maxZoom:9,duration:.5})},200)});
+$("#btn-menu").onclick=()=>$("#drawer").classList.add("open");
+$("#btn-close").onclick=()=>$("#drawer").classList.remove("open");
+document.querySelectorAll("#base button").forEach(b=>b.onclick=()=>{if(b.dataset.v!=="off"&&!navigator.onLine)toast("No connection. Showing only map areas already saved.");setBase(b.dataset.v)});
+document.querySelectorAll("#units button").forEach(b=>b.onclick=()=>{S.units=b.dataset.v;document.querySelectorAll("#units button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));kvSet("units",S.units);S.sel&&S.sel.name?select(S.sel):renderNearby()});
+$("#btn-loc").onclick=()=>{
+  if(!navigator.geolocation){toast("Location is not available in this browser");return}
+  toast("Finding your location");
+  navigator.geolocation.getCurrentPosition(p=>{
+    S.me={lat:p.coords.latitude,lon:p.coords.longitude};meLayer.clearLayers();
+    L.circleMarker([S.me.lat,S.me.lon],{radius:8,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1}).addTo(meLayer);
+    L.circle([S.me.lat,S.me.lon],{radius:Math.max(p.coords.accuracy,20),weight:1,color:"#1a73e8",fillOpacity:.1}).addTo(meLayer);
+    map.flyTo([S.me.lat,S.me.lon],9,{duration:.7});S.sel&&S.sel.name?select(S.sel):renderNearby();
+  },e=>toast(e.code===1?"Location permission was denied":"Could not get a position. Try outside or open the file in Chrome."),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+};
+
+/* ---------- OSM refresh ---------- */
+const OP=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+async function refresh(silent){
+  const note=silent===true?{set textContent(v){}}:$("#refresh-note");
+  if(!navigator.onLine){note.textContent="No connection right now. Try again when you have service.";return}
+  const b=map.getBounds();const span=Math.max(b.getNorth()-b.getSouth(),b.getEast()-b.getWest());
+  if(span>4){note.textContent="Zoom in until the view is about 4 degrees wide or less (roughly state-sized), then try again.";return}
+  const bb=[b.getSouth(),b.getWest(),b.getNorth(),b.getEast()].map(n=>n.toFixed(4)).join(",");
+  const ql='[out:json][timeout:90];(nwr["tourism"="camp_site"]["fee"="no"]('+bb+');nwr["tourism"="camp_site"]["backcountry"="yes"]('+bb+');nwr["tourism"="camp_site"]["camp_site"="basic"]('+bb+');nwr["tourism"="camp_site"]["informal"="yes"]('+bb+'););out center tags 800;(nwr["amenity"="drinking_water"]('+bb+');nwr["natural"="spring"]('+bb+');nwr["amenity"="water_point"]('+bb+');nwr["man_made"="water_well"]["drinking_water"!="no"]('+bb+'););out center tags 800;(nwr["communication:mobile_phone"="yes"]('+bb+');nwr["man_made"="mast"]["tower:type"="communication"]["communication:mobile_phone"]('+bb+'););out center tags 500;(relation["route"="hiking"]["name"]('+bb+'););out center tags 300;';
+  note.textContent="Loading…";$("#btn-refresh").disabled=true;
+  let data=null;
+  for(const u of OP){try{const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(ql),headers:{"Content-Type":"application/x-www-form-urlencoded"}});if(r.ok){data=await r.json();break}}catch(e){}}
+  $("#btn-refresh").disabled=false;
+  if(!data){note.textContent="The data server did not respond. Try again in a minute.";return}
+  const hv={osm:new Set(S.osm.map(o=>o.id)),water:new Set(S.water.map(o=>o.id)),tower:new Set(S.tower.map(o=>o.id)),hike:new Set(S.hikes.map(o=>o.id))};let added=0;
+  data.elements.forEach(e=>{
+    const lat=e.lat??(e.center&&e.center.lat),lon=e.lon??(e.center&&e.center.lon);if(lat==null)return;
+    const id="o"+e.type[0]+e.id;const t=e.tags||{};
+    if(t.route==="hiking"){if(hv.hike.has(id))return;hv.hike.add(id);added++;
+      const nets={lwn:"Local",rwn:"Regional",nwn:"National",iwn:"International"};const d=parseFloat(t.distance);
+      S.hikes.push({id,type:"HIKE",name:t.name,lat,lon,reg:"",note:t.description||"",net:nets[t.network]||"",dist:isFinite(d)?(/mi/i.test(t.distance)?d*1.609:d):0,ref:t.ref||"",op:t.operator||"",sac:t.sac_scale||"",site:/^https?:\/\//i.test(t.website||"")?t.website:""})}
+    else if(t.tourism==="camp_site"){if(hv.osm.has(id))return;hv.osm.add(id);added++;
+      S.osm.push({id,type:"OSM",name:t.name||"Unnamed camp site",lat,lon,reg:"",note:t.description||t.note||"",tags:["fee="+(t.fee||"?"),t.backcountry?"backcountry":"",t.informal?"informal":"",t.access?"access="+t.access:""].filter(Boolean).join(", ")})}
+    else if(t.amenity==="drinking_water"||t.amenity==="water_point"||t.natural==="spring"||t.man_made==="water_well"){if(hv.water.has(id))return;hv.water.add(id);added++;
+      const kind=t.amenity==="drinking_water"?"Drinking water":t.amenity==="water_point"?"Water point":t.natural==="spring"?"Spring":"Well";
+      S.water.push({id,type:"WATER",name:t.name||kind,lat,lon,reg:"",note:kind+(t.seasonal?", seasonal":"")+(t.drinking_water==="no"?", not drinkable":"")+(t.access?", access="+t.access:"")})}
+    else if(t["communication:mobile_phone"]||t.man_made==="mast"){if(hv.tower.has(id))return;hv.tower.add(id);added++;
+      S.tower.push({id,type:"TOWER",name:t.operator?t.operator+" tower":"Cell tower",lat,lon,reg:"",note:[t.operator?"Operator: "+t.operator:"",t["communication:mobile_phone"]?"mobile phone":"",t.height?"height "+t.height+" m":""].filter(Boolean).join(", ")})}
+  });
+  S.osmAt=new Date().toISOString();await kvSet("osm",{items:S.osm,at:S.osmAt});await kvSet("water",S.water);await kvSet("tower",S.tower);await kvSet("hikes",S.hikes);
+  note.textContent="Added "+added+" places ("+data.elements.length+" found in view). Saved on this device. Last update "+new Date(S.osmAt).toLocaleDateString()+".";
+  draw();$("#stat").textContent=statText();
+}
+$("#btn-refresh").onclick=()=>refresh();
+let autoT;map.on("moveend",()=>{if(!S.auto||map.getZoom()<9||!navigator.onLine)return;clearTimeout(autoT);autoT=setTimeout(()=>refresh(true),1500)});
+document.querySelectorAll("#auto button").forEach(b=>b.onclick=()=>{S.auto=b.dataset.v==="on";document.querySelectorAll("#auto button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));kvSet("auto",S.auto?1:0);if(S.auto)refresh(true)});
+$("#btn-clear").onclick=async()=>{S.osm=[];S.water=[];S.tower=[];S.hikes=[];S.osmAt=null;await kvDel("osm");await kvDel("water");await kvDel("tower");await kvDel("hikes");$("#refresh-note").textContent="Saved camp, hike, water, and tower points cleared.";draw()};
+
+/* ---------- import / export ---------- */
+function dl(name,text,type){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();toast("If nothing downloaded, open this file directly in a browser tab")}
+$("#btn-export").onclick=()=>dl("my-camp-pins.geojson",JSON.stringify({type:"FeatureCollection",features:S.pins.map(p=>({type:"Feature",properties:{name:p.name,notes:p.note,rating:p.rating||0,visited:p.visited||"",signal:p.signal==null?"":p.signal},geometry:{type:"Point",coordinates:[p.lon,p.lat]}}))},null,1),"application/geo+json");
+$("#btn-gpx").onclick=()=>dl("my-camp-pins.gpx",'<?xml version="1.0"?><gpx version="1.1" creator="Dispersed Camp Map" xmlns="http://www.topografix.com/GPX/1/1">'+S.pins.map(p=>'<wpt lat="'+p.lat+'" lon="'+p.lon+'"><name>'+esc(p.name)+'</name><desc>'+esc((p.note||"")+(p.rating?" ["+p.rating+"/5]":"")+(p.visited?" visited "+p.visited:""))+"</desc></wpt>").join("")+"</gpx>","application/gpx+xml");
+$("#imp").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;const t=await f.text();let pts=[];
+  try{
+    if(/\.gpx$/i.test(f.name)){const x=new DOMParser().parseFromString(t,"application/xml");x.querySelectorAll("wpt").forEach(w=>pts.push({name:(w.querySelector("name")||{}).textContent||"Waypoint",note:(w.querySelector("desc")||{}).textContent||"",lat:+w.getAttribute("lat"),lon:+w.getAttribute("lon")}))}
+    else if(/\.csv$/i.test(f.name)){t.split(/\r?\n/).slice(1).forEach(l=>{const c=l.split(",");if(c.length>=3&&!isNaN(+c[1]))pts.push({name:c[0],lat:+c[1],lon:+c[2],note:c.slice(3).join(",")})})}
+    else{const g=JSON.parse(t);(g.features||[]).forEach(ft=>{if(ft.geometry&&ft.geometry.type==="Point"){const p=ft.properties||{};pts.push({name:p.name||"Point",note:p.notes||p.description||"",lon:ft.geometry.coordinates[0],lat:ft.geometry.coordinates[1],rating:+p.rating||0,visited:p.visited||"",signal:(p.signal===""||p.signal==null)?null:+p.signal})}})}
+  }catch(err){toast("Could not read that file");return}
+  pts=pts.filter(p=>isFinite(p.lat)&&isFinite(p.lon));
+  pts.forEach((p,i)=>S.pins.push({id:"p"+Date.now()+i,type:"PIN",reg:"",...p}));savePins();draw();
+  toast("Imported "+pts.length+" pins");if(pts.length)map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lon])).pad(.2),{maxZoom:10});e.target.value="";
+};
+
+/* ---------- status / theme / boot ---------- */
+function statText(){if(rec)return "● Recording "+fmt(trackDist(rec.pts))+" · "+dur(Date.now()-rec.start);return (navigator.onLine?"Online":"Offline")+" · "+(S.osm.length?S.osm.length+" saved sites":"built-in data")}
+function netui(){$("#dot").classList.toggle("on",navigator.onLine);$("#stat").textContent=statText()}
+addEventListener("online",netui);addEventListener("offline",netui);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",styleBase);
+new MutationObserver(styleBase).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+addEventListener("resize",()=>{map.invalidateSize();sheetH()});
+
+(async function boot(){
+  styleBase();labelCities();buildLegend();
+  try{
+    const [pins,osm,units,base]=await Promise.all([kvGet("pins"),kvGet("osm"),kvGet("units"),kvGet("base")]);
+    if(Array.isArray(pins))S.pins=pins;if(osm&&osm.items){S.osm=osm.items;S.osmAt=osm.at}
+    if(units){S.units=units;document.querySelectorAll("#units button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===units)))}
+    const st=await Promise.all([kvGet("land"),kvGet("landOn"),kvGet("landOp"),kvGet("fires-on"),kvGet("mvum-on"),kvGet("ca"),kvGet("regions"),kvGet("tracks"),kvGet("water"),kvGet("tower"),kvGet("wm"),kvGet("hikes")]);if(st[0])Object.assign(S.land,st[0]);if(st[1]!==undefined)S.landOn=!!st[1];if(st[2])S.landOp=st[2];if(st[3])S.fires=true;if(st[4])S.mvum=true;if(st[5])Object.assign(S.ca,st[5]);if(Array.isArray(st[6]))S.regions=st[6];if(Array.isArray(st[7]))S.tracks=st[7];if(Array.isArray(st[8]))S.water=st[8];if(Array.isArray(st[9]))S.tower=st[9];if(st[10]!==undefined)S.wm=!!st[10];if(Array.isArray(st[11]))S.hikes=st[11];
+    const au=await kvGet("auto");if(au){S.auto=true;document.querySelectorAll("#auto button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v==="on")))}
+    setBase(!navigator.onLine&&S.regions.length?"usgs":(base||(navigator.onLine?"topo":"off")));
+  }catch(e){}
+  syncLegend();applyOverlays();renderRegions();renderTracks();syncRec();draw();netui();
+  if(S.osmAt)$("#refresh-note").textContent="Last update "+new Date(S.osmAt).toLocaleDateString()+".";
+  setTimeout(()=>{map.invalidateSize();sheetH()},50);
+})();
+})();
+</script>
