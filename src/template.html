@@ -22,8 +22,14 @@
   --land:#242a1c; --water:#16262e; --border:#4a5240; --ca:#20261a;
   --blm:#e0963b; --wtr:#38bdf8; --hik:#2dd4bf; --twr:#cbd5e1; --usfs:#6fb468; --crown:#e0705e; --state:#6aa8d6; --osm:#a99dc0; --pin:#ff6b9d;
   --accent:#8fcf86; --accent-fg:#10150b; color-scheme:dark;}
-html,body{height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden;-webkit-text-size-adjust:100%}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+html{position:fixed;inset:0;width:100%;overflow:hidden;touch-action:manipulation}
+body{position:fixed;inset:0;width:100%;height:100dvh;background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden;-webkit-text-size-adjust:100%;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+input,textarea,select,[contenteditable],.kv dd{-webkit-user-select:text;user-select:text}
+input,textarea,select{font-size:16px!important}
+.scroll,.drawer,.legend,#sheet{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.drawer,.legend{overflow-y:auto}
+img{-webkit-user-drag:none}
 *{box-sizing:border-box}
 #map{position:absolute;inset:0;background:var(--water);z-index:0}
 .leaflet-container{background:var(--water);font-family:var(--sans)}
@@ -836,4 +842,10 @@ addEventListener("resize",()=>{map.invalidateSize();sheetH()});
   setTimeout(()=>{map.invalidateSize();sheetH()},50);
 })();
 })();
+
+/* App-like behaviour: no page zoom or rubber-band, installable and offline-capable */
+["gesturestart","gesturechange","gestureend"].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));
+document.addEventListener("contextmenu",e=>{if(!/INPUT|TEXTAREA/.test(e.target.tagName))e.preventDefault()});
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+if("serviceWorker" in navigator&&/^https?:$/.test(location.protocol))addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 </script>
